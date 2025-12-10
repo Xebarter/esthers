@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Product } from '../../lib/supabase';
+import { Product, formatCurrency } from '../../lib/supabase';
 import { useCart } from '../../contexts/CartContext';
 import { ShoppingCart, Check, X } from 'lucide-react';
 
@@ -64,7 +64,7 @@ export function ProductCard({ product }: ProductCardProps) {
           {/* Price & Stock */}
           <div className="flex items-center justify-between">
             <p className="text-3xl font-extrabold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-              ${product.price.toFixed(2)}
+              {formatCurrency(product.price)}
             </p>
             <p className={`text-sm font-medium ${product.stock > 0 ? 'text-purple-600' : 'text-red-600'}`}>
               {product.stock > 0 ? `${product.stock} in stock` : 'Out of Stock'}
@@ -180,7 +180,7 @@ export function ProductCard({ product }: ProductCardProps) {
 
                   <div className="flex items-center justify-between">
                     <p className="text-4xl font-extrabold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-                      ${product.price.toFixed(2)}
+                      {formatCurrency(product.price)}
                     </p>
                     <p className={`text-lg font-medium ${product.stock > 0 ? 'text-purple-600' : 'text-red-600'}`}>
                       {product.stock > 0 ? `${product.stock} in stock` : 'Out of Stock'}

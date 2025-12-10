@@ -50,15 +50,15 @@ export function Footer() {
 
   // WhatsApp direct chat link
   const whatsappNumber = "+256704682885";
-  const whatsappLink = `https://wa.me/${whatsappNumber.replace(/\+/g, "")}?text=Hello%20Esther's%20Footwear!%20I'd%20like%20to%20inquire%20about%20your%20products`;
+  const whatsappLink = `https://wa.me/${whatsappNumber.replace(/\+/g, "")}?text=Hello%20Alethea%20Industrials!%20I'd%20like%20to%20inquire%20about%20your%20products`;
 
   // Social links (icons now rendered via inline SVG)
   const socialLinks = [
-    { name: "Facebook", url: "https://facebook.com/esthersfootwear" },
-    { name: "Instagram", url: "https://instagram.com/esthersfootwear" },
-    { name: "X", url: "https://x.com/esthersfootwear" },
+    { name: "Facebook", url: "https://facebook.com/aletheaindustrials" },
+    { name: "Instagram", url: "https://instagram.com/aletheaindustrials" },
+    { name: "X", url: "https://x.com/aletheaindustrials" },
     { name: "WhatsApp", url: whatsappLink },
-    { name: "TikTok", url: "https://tiktok.com/@esthersfootwear" },
+    { name: "TikTok", url: "https://tiktok.com/@aletheaindustrials" },
   ];
 
   return (
@@ -74,18 +74,18 @@ export function Footer() {
           {/* Branding */}
           <div className="space-y-4">
             <h3 className="text-3xl font-extrabold bg-gradient-to-r from-pink-300 to-purple-300 bg-clip-text text-transparent tracking-tight">
-              Esther&apos;s Footwear
+              Alethea Industrials
             </h3>
             <p className="text-purple-200 leading-relaxed">
-              Step into comfort, elegance, and quality. Your trusted source for premium footwear in Uganda.
+              Premium industrial solutions for modern businesses.
             </p>
           </div>
 
           {/* Shop */}
           <div>
-            <h4 className="text-xl font-bold mb-5">Shop</h4>
+            <h4 className="text-xl font-bold mb-5">Products</h4>
             <ul className="space-y-3">
-              {["New Arrivals", "Women’s Shoes", "Men’s Shoes", "Kids", "Collections"].map((item) => (
+              {["New Arrivals", "Industrial Equipment", "Tools", "Supplies", "Custom Solutions"].map((item) => (
                 <li key={item}>
                   <a href="#" className="hover:text-pink-300 transition-colors">
                     {item}
@@ -145,10 +145,10 @@ export function Footer() {
         {/* Footer Bottom */}
         <div className="border-t border-purple-600/50 mt-12 pt-8 text-center">
           <p className="text-purple-300 text-sm">
-            © {new Date().getFullYear()} Esther&apos;s Footwear. All rights reserved.
+            © {new Date().getFullYear()} Alethea Industrials Ltd. All rights reserved.
           </p>
           <p className="text-purple-400 text-xs mt-2">
-            Made with <span className="text-pink-400">Love</span> in Uganda
+            Made with <span className="text-pink-400">Precision</span> in Uganda
           </p>
         </div>
       </div>

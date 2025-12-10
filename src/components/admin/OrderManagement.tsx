@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { supabase, Order, OrderItem, Customer, Product } from '../../lib/supabase';
-import { Eye, X } from 'lucide-react';
+import { Eye, Truck, X } from 'lucide-react';
+import { supabase, Order, formatCurrency } from '../../lib/supabase';
 
 interface OrderWithDetails extends Order {
   customer: Customer;
@@ -138,7 +138,7 @@ export function OrderManagement() {
                   {new Date(order.created_at).toLocaleDateString()}
                 </td>
                 <td className="px-6 py-4 text-sm font-semibold text-gray-900">
-                  ${order.total_amount.toFixed(2)}
+                  {formatCurrency(order.total_amount)}
                 </td>
                 <td className="px-6 py-4">
                   <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(order.status)}`}>

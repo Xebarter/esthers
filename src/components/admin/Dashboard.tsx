@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../../lib/supabase';
-import { Package, ShoppingBag, DollarSign, TrendingUp } from 'lucide-react';
+import { ShoppingCart, DollarSign, Package, TrendingUp } from 'lucide-react';
+import { supabase, formatCurrency } from '../../lib/supabase';
 
 interface Stats {
   totalProducts: number;
@@ -78,7 +78,7 @@ export function Dashboard() {
               <p className="text-3xl font-bold text-gray-900">{stats.totalOrders}</p>
             </div>
             <div className="bg-green-100 p-3 rounded-full">
-              <ShoppingBag className="h-6 w-6 text-green-600" />
+              <ShoppingCart className="h-6 w-6 text-green-600" />
             </div>
           </div>
         </div>
@@ -87,7 +87,7 @@ export function Dashboard() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-600 mb-1">Total Revenue</p>
-              <p className="text-3xl font-bold text-gray-900">${stats.totalRevenue.toFixed(2)}</p>
+              <p className="text-3xl font-bold text-gray-900">{formatCurrency(stats.totalRevenue, 'UGX')}</p>
             </div>
             <div className="bg-yellow-100 p-3 rounded-full">
               <DollarSign className="h-6 w-6 text-yellow-600" />

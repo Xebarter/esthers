@@ -106,7 +106,7 @@ export function Checkout({ isOpen, onClose }: CheckoutProps) {
               Order Placed Successfully!
             </h3>
             <p className="text-gray-600 leading-relaxed">
-              Thank you for shopping with Esther&apos;s Footwear.
+              Thank you for shopping with Alethea Industrials Ltd.
               <br />
               We&apos;ll send a confirmation to <strong>{formData.email}</strong> shortly.
             </p>

@@ -1,5 +1,5 @@
 /*
-  # Create E-commerce Schema for Esther's Footwear Store
+  # Create E-commerce Schema for Alethea Industrials Ltd
 
   ## Overview
   Complete database schema for an e-commerce footwear store with customer orders and admin management capabilities.
@@ -14,7 +14,7 @@
   - `created_at` (timestamptz) - Creation timestamp
 
   ### 2. `products`
-  Footwear products available for purchase
+  Industrial products available for purchase
   - `id` (uuid, primary key)
   - `name` (text) - Product name
   - `description` (text) - Product description
@@ -60,14 +60,9 @@
   - `color` (text) - Selected color
   - `created_at` (timestamptz) - Creation timestamp
 
-  ## Security
-  
-  - Enable RLS on all tables
-  - Categories: Public read access, admin can manage
-  - Products: Public read access, admin can manage
-  - Customers: Customers can read/update their own data
-  - Orders: Customers can read their own orders, admin can manage all
-  - Order Items: Linked to order permissions
+  ## Storage
+  - Create 'images' storage bucket for product images
+  - Configure bucket for public read access
 
   ## Notes
   
@@ -76,6 +71,7 @@
   - Timestamps track creation and updates where applicable
   - Stock management included for inventory tracking
   - Order status tracking for fulfillment workflow
+  - No RLS policies for simplified development
 */
 
 -- Create categories table
@@ -137,57 +133,6 @@ CREATE TABLE IF NOT EXISTS order_items (
   created_at timestamptz DEFAULT now()
 );
 
--- Enable RLS on all tables
-ALTER TABLE categories ENABLE ROW LEVEL SECURITY;
-ALTER TABLE products ENABLE ROW LEVEL SECURITY;
-ALTER TABLE customers ENABLE ROW LEVEL SECURITY;
-ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
-ALTER TABLE order_items ENABLE ROW LEVEL SECURITY;
-
--- Categories policies (public read, no auth required for viewing)
-CREATE POLICY "Anyone can view categories"
-  ON categories FOR SELECT
-  USING (true);
-
--- Products policies (public read, no auth required for viewing)
-CREATE POLICY "Anyone can view products"
-  ON products FOR SELECT
-  USING (true);
-
--- Customers policies (public insert for new customers, read own data)
-CREATE POLICY "Anyone can create customer profile"
-  ON customers FOR INSERT
-  WITH CHECK (true);
-
-CREATE POLICY "Anyone can view customers"
-  ON customers FOR SELECT
-  USING (true);
-
-CREATE POLICY "Anyone can update customers"
-  ON customers FOR UPDATE
-  USING (true);
-
--- Orders policies (public access for creating and viewing)
-CREATE POLICY "Anyone can create orders"
-  ON orders FOR INSERT
-  WITH CHECK (true);
-
-CREATE POLICY "Anyone can view orders"
-  ON orders FOR SELECT
-  USING (true);
-
-CREATE POLICY "Anyone can update orders"
-  ON orders FOR UPDATE
-  USING (true);
-
--- Order items policies (linked to order permissions)
-CREATE POLICY "Anyone can create order items"
-  ON order_items FOR INSERT
-  WITH CHECK (true);
-
-CREATE POLICY "Anyone can view order items"
-  ON order_items FOR SELECT
-  USING (true);
 
 -- Create indexes for better query performance
 CREATE INDEX IF NOT EXISTS idx_products_category ON products(category_id);
@@ -196,6 +141,11 @@ CREATE INDEX IF NOT EXISTS idx_orders_customer ON orders(customer_id);
 CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
 CREATE INDEX IF NOT EXISTS idx_order_items_order ON order_items(order_id);
 CREATE INDEX IF NOT EXISTS idx_order_items_product ON order_items(product_id);
+
+-- Create storage bucket for images
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('images', 'images', true)
+ON CONFLICT (id) DO NOTHING;
 
 -- Insert default categories
 INSERT INTO categories (name, description) VALUES
@@ -298,3 +248,47 @@ INSERT INTO products (name, description, price, category_id, image_url, sizes, c
     true
   )
 ON CONFLICT DO NOTHING;
+
+-- Enable uuid-ossp extension for UUID generation
+create extension if not exists "uuid-ossp";
+
+-- Create ecommerce schema
+create schema if not exists ecommerce;
+
+-- Products table
+create table if not exists ecommerce.products (
+  id uuid primary key default uuid_generate_v4(),
+  name varchar(255) not null,
+  description text,
+  price decimal(10,2) not null,
+  image_url text,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- Orders table
+create table if not exists ecommerce.orders (
+  id uuid primary key default uuid_generate_v4(),
+  customer_name varchar(255) not null,
+  customer_email varchar(255) not null,
+  customer_phone varchar(50),
+  shipping_address text not null,
+  total_amount decimal(10,2) not null,
+  status varchar(50) default 'pending',
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- Order items table
+create table if not exists ecommerce.order_items (
+  id uuid primary key default uuid_generate_v4(),
+  order_id uuid references ecommerce.orders(id) on delete cascade,
+  product_id uuid references ecommerce.products(id),
+  quantity integer not null,
+  price decimal(10,2) not null
+);
+
+-- Insert sample products
+insert into ecommerce.products (name, description, price, image_url) values
+  ('Industrial Safety Boots', 'Premium quality safety boots for industrial use', 89.99, 'https://images.unsplash.com/photo-1584192382484-8f78dea0d165?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=500&q=80'),
+  ('Heavy-Duty Work Gloves', 'Durable work gloves for heavy-duty tasks', 24.99, 'https://images.unsplash.com/photo-1604977096125-6b6aa81cbbaf?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=500&q=80'),
+  ('Tool Kit Set', 'Complete tool kit for industrial applications', 149.99, 'https://images.unsplash.com/photo-1586390940930-1ac51ca1c9d4?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=500&q=80'),
+  ('Protective Eyewear', 'Safety glasses for industrial environments', 39.99, 'https://images.unsplash.com/photo-1611832388266-8a6dcd0ec385?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=500&q=80');

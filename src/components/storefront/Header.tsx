@@ -18,10 +18,10 @@ export function Header({ onCartClick }: HeaderProps) {
           {/* Brand */}
           <div className="flex flex-col justify-center">
             <h1 className="text-3xl sm:text-4xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-purple-700 via-pink-600 to-purple-800 drop-shadow-md">
-              Esther's
+              Alethea
             </h1>
             <span className="text-xs sm:text-sm font-medium text-gray-600 tracking-widest uppercase -mt-1.5 opacity-90">
-              Footwear Boutique
+              Industrials Ltd
             </span>
           </div>
 
@@ -73,18 +73,6 @@ export function Header({ onCartClick }: HeaderProps) {
         </div>
       </div>
 
-      {/* Clean Animations */}
-      <style jsx global>{`
-        @keyframes ping {
-          75%, 100% {
-            transform: scale(2);
-            opacity: 0;
-          }
-        }
-        .animate-ping {
-          animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
-        }
-      `}</style>
     </header>
   );
 }

@@ -34,7 +34,7 @@ export function AdminLayout({
       {/* Mobile Header */}
       <header className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-gray-900 text-white shadow-xl">
         <div className="flex items-center justify-between p-4">
-          <h1 className="text-xl font-bold">Esther's Admin</h1>
+          <h1 className="text-xl font-bold">Alethea Admin</h1>
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             className="p-2 rounded-lg hover:bg-gray-800 transition-colors"
@@ -58,10 +58,10 @@ export function AdminLayout({
         {/* Logo & Title - Desktop */}
         <div className="hidden lg:flex items-center gap-3 p-6 border-b border-gray-800">
           <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg flex items-center justify-center font-bold text-xl">
-            E
+            A
           </div>
           <div>
-            <h1 className="text-2xl font-bold">Esther's</h1>
+            <h1 className="text-2xl font-bold">Alethea</h1>
             <p className="text-xs text-gray-400">Admin Panel</p>
           </div>
         </div>
@@ -69,9 +69,9 @@ export function AdminLayout({
         {/* Mobile Title (when menu open) */}
         <div className="lg:hidden flex items-center gap-3 p-6 border-b border-gray-800">
           <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg flex items-center justify-center font-bold text-xl">
-            E
+            A
           </div>
-          <h1 className="text-2xl font-bold">Esther's Admin</h1>
+          <h1 className="text-2xl font-bold">Alethea Admin</h1>
         </div>
 
         {/* Navigation */}
