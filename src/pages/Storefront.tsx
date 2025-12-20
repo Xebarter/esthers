@@ -15,7 +15,7 @@ export function Storefront() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-900">
       <Header onCartClick={() => setShowCart(true)} />
       <ProductGrid />
       <Footer />

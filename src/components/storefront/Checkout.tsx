@@ -1,7 +1,8 @@
 import { useState, FormEvent } from 'react';
 import { X, Check } from 'lucide-react';
 import { useCart } from '../../contexts/CartContext';
-import { supabase } from '../../lib/supabase';
+import { supabase, formatCurrency } from '../../lib/supabase';
+import { submitOrder, formatOrderData, getTransactionStatus } from '../../lib/pesapal';
 
 interface CheckoutProps {
   isOpen: boolean;
@@ -12,6 +13,8 @@ export function Checkout({ isOpen, onClose }: CheckoutProps) {
   const { items, getTotalPrice, clearCart } = useCart();
   const [loading, setLoading] = useState(false);
   const [orderPlaced, setOrderPlaced] = useState(false);
+  const [animatingOut, setAnimatingOut] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<'pesapal' | 'cash'>('pesapal');
 
   const [formData, setFormData] = useState({
     name: '',
@@ -23,26 +26,111 @@ export function Checkout({ isOpen, onClose }: CheckoutProps) {
     country: '',
   });
 
-  const handleSubmit = async (e: FormEvent) => {
+  const handlePlaceOrder = (e: FormEvent) => {
+    e.preventDefault();
+    if (paymentMethod === 'pesapal') {
+      handlePesapalPayment(e);
+    } else {
+      handleSubmit(e);
+    }
+  };
+
+  const calculateTotal = () => {
+    return items.reduce((total, item) => total + item.product.price * item.quantity, 0);
+  };
+
+  const handlePesapalPayment = async (e: FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
     try {
-      const { data: customer, error: customerError } = await supabase
+      // First, check if customer already exists by email
+      let customer;
+      const { data: existingCustomer, error: fetchError } = await supabase
         .from('customers')
-        .insert({
-          name: formData.name,
-          email: formData.email,
-          phone: formData.phone,
-          address: formData.address,
-          city: formData.city,
-          postal_code: formData.postalCode,
-          country: formData.country,
-        })
-        .select()
+        .select('*')
+        .eq('email', formData.email)
         .single();
 
-      if (customerError) throw customerError;
+      if (fetchError && fetchError.code !== 'PGRST116') {
+        // Some other error occurred
+        throw fetchError;
+      }
+
+      if (existingCustomer) {
+        // Customer exists, use existing customer data but update with form data
+        customer = existingCustomer;
+        
+        // Update customer info with latest data from form
+        const { data: updatedCustomer, error: updateError } = await supabase
+          .from('customers')
+          .update({
+            name: formData.name,
+            phone: formData.phone,
+            address: formData.address,
+            city: formData.city,
+            postal_code: formData.postalCode,
+            country: formData.country,
+          })
+          .eq('id', customer.id)
+          .select()
+          .single();
+          
+        if (updateError) throw updateError;
+        customer = updatedCustomer;
+      } else {
+        // Customer does not exist, create new customer
+        const { data: newCustomer, error: insertError } = await supabase
+          .from('customers')
+          .insert({
+            name: formData.name,
+            email: formData.email,
+            phone: formData.phone,
+            address: formData.address,
+            city: formData.city,
+            postal_code: formData.postalCode,
+            country: formData.country,
+          })
+          .select()
+          .single();
+
+        if (insertError) {
+          // Handle unique constraint violation by trying to fetch the customer again
+          if (insertError.code === '23505') { // Unique violation error code
+            const { data: fetchedCustomer, error: fetchError } = await supabase
+              .from('customers')
+              .select('*')
+              .eq('email', formData.email)
+              .single();
+            
+            if (fetchError) throw fetchError;
+            customer = fetchedCustomer;
+            
+            // Update the existing customer with the new information
+            const { data: updatedCustomer, error: updateError } = await supabase
+              .from('customers')
+              .update({
+                name: formData.name,
+                phone: formData.phone,
+                address: formData.address,
+                city: formData.city,
+                postal_code: formData.postalCode,
+                country: formData.country,
+              })
+              .eq('id', customer.id)
+              .select()
+              .single();
+              
+            if (updateError) throw updateError;
+            customer = updatedCustomer;
+          } else {
+            // If it's another kind of error, rethrow it
+            throw insertError;
+          }
+        } else {
+          customer = newCustomer;
+        }
+      }
 
       const { data: order, error: orderError } = await supabase
         .from('orders')
@@ -61,8 +149,152 @@ export function Checkout({ isOpen, onClose }: CheckoutProps) {
         product_id: item.product.id,
         quantity: item.quantity,
         price: item.product.price,
-        size: item.selectedSize,
-        color: item.selectedColor,
+        volume_ml: item.product.volume_ml,  // Adding the required volume_ml field
+      }));
+
+      const { error: itemsError } = await supabase
+        .from('order_items')
+        .insert(orderItems);
+
+      if (itemsError) throw itemsError;
+
+      // Prepare order data for Pesapal
+      const returnUrl = `${window.location.origin}/payment-result`;
+      const pesapalOrderData = formatOrderData(order, customer, items, returnUrl);
+      
+      // Submit order to Pesapal
+      const pesapalResponse = await submitOrder(pesapalOrderData);
+      
+      // Redirect to Pesapal payment page
+      if (pesapalResponse.redirect_url) {
+        window.location.href = pesapalResponse.redirect_url;
+      } else {
+        throw new Error('Failed to get redirect URL from Pesapal');
+      }
+    } catch (error: any) {
+      console.error('Error placing order:', error);
+      // Provide more specific error messages
+      if (error.message) {
+        alert(`Failed to place order: ${error.message}. Please check your information and try again.`);
+      } else {
+        alert('Failed to place order. Please check your information and try again.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+
+    try {
+      // First, check if customer already exists by email
+      let customer;
+      const { data: existingCustomer, error: fetchError } = await supabase
+        .from('customers')
+        .select('*')
+        .eq('email', formData.email)
+        .single();
+
+      if (fetchError && fetchError.code !== 'PGRST116') {
+        // Some other error occurred
+        throw fetchError;
+      }
+
+      if (existingCustomer) {
+        // Customer exists, use existing customer data but update with form data
+        customer = existingCustomer;
+        
+        // Update customer info with latest data from form
+        const { data: updatedCustomer, error: updateError } = await supabase
+          .from('customers')
+          .update({
+            name: formData.name,
+            phone: formData.phone,
+            address: formData.address,
+            city: formData.city,
+            postal_code: formData.postalCode,
+            country: formData.country,
+          })
+          .eq('id', customer.id)
+          .select()
+          .single();
+          
+        if (updateError) throw updateError;
+        customer = updatedCustomer;
+      } else {
+        // Customer does not exist, create new customer
+        const { data: newCustomer, error: insertError } = await supabase
+          .from('customers')
+          .insert({
+            name: formData.name,
+            email: formData.email,
+            phone: formData.phone,
+            address: formData.address,
+            city: formData.city,
+            postal_code: formData.postalCode,
+            country: formData.country,
+          })
+          .select()
+          .single();
+
+        if (insertError) {
+          // Handle unique constraint violation by trying to fetch the customer again
+          if (insertError.code === '23505') { // Unique violation error code
+            const { data: fetchedCustomer, error: fetchError } = await supabase
+              .from('customers')
+              .select('*')
+              .eq('email', formData.email)
+              .single();
+            
+            if (fetchError) throw fetchError;
+            customer = fetchedCustomer;
+            
+            // Update the existing customer with the new information
+            const { data: updatedCustomer, error: updateError } = await supabase
+              .from('customers')
+              .update({
+                name: formData.name,
+                phone: formData.phone,
+                address: formData.address,
+                city: formData.city,
+                postal_code: formData.postalCode,
+                country: formData.country,
+              })
+              .eq('id', customer.id)
+              .select()
+              .single();
+              
+            if (updateError) throw updateError;
+            customer = updatedCustomer;
+          } else {
+            // If it's another kind of error, rethrow it
+            throw insertError;
+          }
+        } else {
+          customer = newCustomer;
+        }
+      }
+
+      const { data: order, error: orderError } = await supabase
+        .from('orders')
+        .insert({
+          customer_id: customer.id,
+          total_amount: getTotalPrice(),
+          status: 'pending',
+        })
+        .select()
+        .single();
+
+      if (orderError) throw orderError;
+
+      const orderItems = items.map(item => ({
+        order_id: order.id,
+        product_id: item.product.id,
+        quantity: item.quantity,
+        price: item.product.price,
+        volume_ml: item.product.volume_ml,  // Adding the required volume_ml field
       }));
 
       const { error: itemsError } = await supabase
@@ -96,20 +328,24 @@ export function Checkout({ isOpen, onClose }: CheckoutProps) {
   if (orderPlaced) {
     return (
       <>
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50" onClick={onClose} />
-        <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl p-10 max-w-md w-full text-center animate-in fade-in zoom-in duration-500">
-            <div className="w-20 h-20 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg">
-              <Check className="w-12 h-12 text-white" />
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50" onClick={onClose} />
+        <div className="fixed inset-0 flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-gradient-to-br from-gray-900 to-black rounded-2xl shadow-2xl p-8 max-w-md w-full my-8 border border-amber-900/50">
+            <div className="text-center">
+              <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-amber-500/20 mb-4">
+                <Check className="h-8 w-8 text-amber-500" />
+              </div>
+              <h2 className="text-2xl font-bold text-amber-50 mb-4">Order Confirmed</h2>
+              <p className="text-amber-100 mb-6">
+                Thank you for your purchase. A confirmation has been sent to your email.
+              </p>
+              <button
+                onClick={onClose}
+                className="px-6 py-3 bg-gradient-to-r from-amber-600 to-amber-700 text-white font-medium rounded-lg hover:from-amber-700 hover:to-amber-800 transition-all duration-300"
+              >
+                Continue Shopping
+              </button>
             </div>
-            <h3 className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent mb-3">
-              Order Placed Successfully!
-            </h3>
-            <p className="text-gray-600 leading-relaxed">
-              Thank you for shopping with Alethea Industrials Ltd.
-              <br />
-              We&apos;ll send a confirmation to <strong>{formData.email}</strong> shortly.
-            </p>
           </div>
         </div>
       </>
@@ -118,136 +354,230 @@ export function Checkout({ isOpen, onClose }: CheckoutProps) {
 
   return (
     <>
-      {/* Backdrop */}
-      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50" onClick={onClose} />
-
-      {/* Modal */}
-      <div className="fixed inset-0 z-50 overflow-y-auto">
-        <div className="flex min-h-full items-center justify-center p-4 sm:p-6 lg:p-8">
-          <div className="w-full max-w-4xl bg-white rounded-2xl shadow-2xl overflow-hidden">
-            {/* Header */}
-            <div className="bg-gradient-to-r from-purple-600 to-pink-600 px-6 py-5 flex items-center justify-between">
-              <h2 className="text-2xl sm:text-3xl font-bold text-white">Checkout</h2>
-              <button
-                onClick={onClose}
-                className="p-2 hover:bg-white/20 rounded-full transition-all"
+      <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50" onClick={onClose} />
+      {/* Changed to flex layout with column direction on mobile */}
+      <div className="fixed inset-0 flex items-center justify-center z-50 p-0 sm:p-4 overflow-y-auto">
+        <div className="bg-gradient-to-br from-gray-900 to-black rounded-none sm:rounded-2xl shadow-2xl max-w-2xl w-full my-0 sm:my-8 border-0 sm:border border-amber-900/50 flex flex-col h-screen sm:h-auto">
+          <div className="p-6 md:p-8">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold text-amber-50">Checkout</h2>
+              <button 
+                type="button" 
+                onClick={onClose} 
+                className="text-amber-500 hover:text-amber-300 transition-colors"
               >
-                <X className="h-6 w-6 text-white" />
+                <X size={24} />
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="p-6 sm:p-8 space-y-8">
-              {/* Customer Info Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-sm font-semibold text-purple-800 mb-2">Full Name *</label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full px-4 py-3 border-2 border-purple-200 rounded-xl focus:outline-none focus:border-purple-500 focus:ring-4 focus:ring-purple-100 transition-all bg-purple-50/50"
-                    placeholder="Jane Doe"
-                  />
-                </div>
+            {/* Payment Method Selection */}
+            <div className="mb-6">
+              <h3 className="text-lg font-semibold text-amber-50 mb-4 border-b border-amber-900/50 pb-2">
+                Payment Method
+              </h3>
+              <div className="grid grid-cols-2 gap-4">
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod('pesapal')}
+                  className={`p-4 rounded-lg border-2 ${
+                    paymentMethod === 'pesapal'
+                      ? 'border-amber-500 bg-amber-500/10'
+                      : 'border-gray-700 hover:border-amber-500'
+                  }`}
+                >
+                  <div className="font-medium text-amber-50">Pay with Pesapal</div>
+                  <div className="text-sm text-amber-200">Credit Card, Mobile Money, etc.</div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod('cash')}
+                  className={`p-4 rounded-lg border-2 ${
+                    paymentMethod === 'cash'
+                      ? 'border-amber-500 bg-amber-500/10'
+                      : 'border-gray-700 hover:border-amber-500'
+                  }`}
+                >
+                  <div className="font-medium text-amber-50">Cash on Delivery</div>
+                  <div className="text-sm text-amber-200">Pay when you receive your order</div>
+                </button>
+              </div>
+            </div>
 
-                <div>
-                  <label className="block text-sm font-semibold text-purple-800 mb-2">Email *</label>
-                  <input
-                    type="email"
-                    required
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    className="w-full px-4 py-3 border-2 border-purple-200 rounded-xl focus:outline-none focus:border-purple-500 focus:ring-4 focus:ring-purple-100 transition-all bg-purple-50/50"
-                    placeholder="jane@example.com"
-                  />
-                </div>
+            {/* Added max-height and overflow for the form */}
+            <form onSubmit={handlePlaceOrder} className="grid grid-cols-1 md:grid-cols-2 gap-6 overflow-y-auto max-h-[calc(100vh-250px)] pr-2">
+              <div className="md:col-span-2">
+                <h3 className="text-lg font-semibold text-amber-50 mb-4 border-b border-amber-900/50 pb-2">
+                  Shipping Information
+                </h3>
+              </div>
 
-                <div>
-                  <label className="block text-sm font-semibold text-purple-800 mb-2">Phone *</label>
-                  <input
-                    type="tel"
-                    required
-                    value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    className="w-full px-4 py-3 border-2 border-purple-200 rounded-xl focus:outline-none focus:border-purple-500 focus:ring-4 focus:ring-purple-100 transition-all bg-purple-50/50"
-                    placeholder="+256 700 000 000"
-                  />
-                </div>
+              <div>
+                <label htmlFor="name" className="block text-amber-100 text-sm font-medium mb-2">
+                  Full Name
+                </label>
+                <input
+                  type="text"
+                  id="name"
+                  name="name"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  className="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-amber-50 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  required
+                />
+              </div>
 
-                <div>
-                  <label className="block text-sm font-semibold text-purple-800 mb-2">Country *</label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.country}
-                    onChange={(e) => setFormData({ ...formData, country: e.target.value })}
-                    className="w-full px-4 py-3 border-2 border-purple-200 rounded-xl focus:outline-none focus:border-purple-500 focus:ring-4 focus:ring-purple-100 transition-all bg-purple-50/50"
-                    placeholder="Uganda"
-                  />
-                </div>
+              <div>
+                <label htmlFor="email" className="block text-amber-100 text-sm font-medium mb-2">
+                  Email Address
+                </label>
+                <input
+                  type="email"
+                  id="email"
+                  name="email"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  className="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-amber-50 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  required
+                />
+              </div>
 
-                <div className="sm:col-span-2">
-                  <label className="block text-sm font-semibold text-purple-800 mb-2">Street Address *</label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.address}
-                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                    className="w-full px-4 py-3 border-2 border-purple-200 rounded-xl focus:outline-none focus:border-purple-500 focus:ring-4 focus:ring-purple-100 transition-all bg-purple-50/50"
-                    placeholder="123 Main Street, Kampala"
-                  />
-                </div>
+              <div>
+                <label htmlFor="phone" className="block text-amber-100 text-sm font-medium mb-2">
+                  Phone Number
+                </label>
+                <input
+                  type="tel"
+                  id="phone"
+                  name="phone"
+                  value={formData.phone}
+                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                  className="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-amber-50 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  required
+                />
+              </div>
 
-                <div>
-                  <label className="block text-sm font-semibold text-purple-800 mb-2">City *</label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.city}
-                    onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                    className="w-full px-4 py-3 border-2 border-purple-200 rounded-xl focus:outline-none focus:border-purple-500 focus:ring-4 focus:ring-purple-100 transition-all bg-purple-50/50"
-                    placeholder="Kampala"
-                  />
-                </div>
+              <div>
+                <label htmlFor="address" className="block text-amber-100 text-sm font-medium mb-2">
+                  Street Address
+                </label>
+                <input
+                  type="text"
+                  id="address"
+                  name="address"
+                  value={formData.address}
+                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                  className="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-amber-50 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  required
+                />
+              </div>
 
-                <div>
-                  <label className="block text-sm font-semibold text-purple-800 mb-2">Postal Code *</label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.postalCode}
-                    onChange={(e) => setFormData({ ...formData, postalCode: e.target.value })}
-                    className="w-full px-4 py-3 border-2 border-purple-200 rounded-xl focus:outline-none focus:border-purple-500 focus:ring-4 focus:ring-purple-100 transition-all bg-purple-50/50"
-                    placeholder="00000"
-                  />
+              <div>
+                <label htmlFor="city" className="block text-amber-100 text-sm font-medium mb-2">
+                  City
+                </label>
+                <input
+                  type="text"
+                  id="city"
+                  name="city"
+                  value={formData.city}
+                  onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                  className="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-amber-50 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  required
+                />
+              </div>
+
+              <div>
+                <label htmlFor="postalCode" className="block text-amber-100 text-sm font-medium mb-2">
+                  Postal Code
+                </label>
+                <input
+                  type="text"
+                  id="postalCode"
+                  name="postalCode"
+                  value={formData.postalCode}
+                  onChange={(e) => setFormData({ ...formData, postalCode: e.target.value })}
+                  className="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-amber-50 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  required
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <label htmlFor="country" className="block text-amber-100 text-sm font-medium mb-2">
+                  Country
+                </label>
+                <input
+                  type="text"
+                  id="country"
+                  name="country"
+                  value={formData.country}
+                  onChange={(e) => setFormData({ ...formData, country: e.target.value })}
+                  className="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-amber-50 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  required
+                />
+              </div>
+
+              <div className="md:col-span-2 pt-4">
+                <h3 className="text-lg font-semibold text-amber-50 mb-4 border-b border-amber-900/50 pb-2">
+                  Order Summary
+                </h3>
+                
+                <div className="space-y-4">
+                  {items.map((item) => (
+                    <div key={item.product.id} className="flex items-center gap-4 p-3 bg-gray-800/50 rounded-lg">
+                      <img
+                        src={item.product.image_url || 'https://placehold.co/100'}
+                        alt={item.product.name}
+                        className="w-16 h-16 object-cover rounded"
+                      />
+                      <div className="flex-1">
+                        <h4 className="font-medium text-amber-50">{item.product.name}</h4>
+                        <p className="text-amber-200 text-sm">
+                          {item.product.volume_ml}ml • {formatCurrency(item.product.price)} × {item.quantity}
+                        </p>
+                      </div>
+                      <div className="text-amber-50 font-medium">
+                        {formatCurrency(item.product.price * item.quantity)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                
+                <div className="mt-6 pt-4 border-t border-amber-900/50">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-amber-200">Subtotal</span>
+                    <span className="text-amber-50">{formatCurrency(calculateTotal())}</span>
+                  </div>
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-amber-200">Shipping</span>
+                    <span className="text-amber-50">Free</span>
+                  </div>
+                  <div className="flex justify-between items-center mt-4 pt-4 border-t border-amber-900/50">
+                    <span className="text-amber-50 font-bold text-lg">Total</span>
+                    <span className="text-amber-50 font-bold text-xl">
+                      {formatCurrency(calculateTotal())}
+                    </span>
+                  </div>
                 </div>
               </div>
 
-              {/* Order Summary & Submit */}
-              <div className="border-t-2 border-purple-100 pt-6">
-                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6">
-                  <span className="text-xl font-bold text-gray-800">Total Amount:</span>
-                  <span className="text-3xl font-extrabold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-                    ${getTotalPrice().toFixed(2)}
-                  </span>
-                </div>
-
-                <button
-                  type="submit"
+              <div className="md:col-span-2 mt-6">
+                <button 
+                  type="submit" 
                   disabled={loading}
-                  className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold text-lg py-4 rounded-xl hover:from-purple-700 hover:to-pink-700 transform hover:-translate-y-1 transition-all duration-300 shadow-xl disabled:opacity-70 disabled:cursor-not-allowed disabled:transform-none"
+                  className="w-full bg-gradient-to-r from-amber-600 to-amber-700 text-white font-bold py-4 px-6 rounded-xl hover:from-amber-700 hover:to-amber-800 transition-all duration-300 transform hover:scale-[1.02] shadow-lg disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
                 >
                   {loading ? (
-                    <span className="flex items-center justify-center gap-3">
-                      <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                    <span className="flex items-center justify-center">
+                      <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                       </svg>
                       Processing Order...
                     </span>
+                  ) : paymentMethod === 'pesapal' ? (
+                    'Proceed to Payment'
                   ) : (
-                    'Place Order & Pay'
+                    'Complete Purchase'
                   )}
                 </button>
               </div>

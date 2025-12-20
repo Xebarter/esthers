@@ -4,15 +4,13 @@ import { Product } from '../lib/supabase';
 export interface CartItem {
   product: Product;
   quantity: number;
-  selectedSize: string;
-  selectedColor: string;
 }
 
 interface CartContextType {
   items: CartItem[];
-  addToCart: (product: Product, size: string, color: string, quantity: number) => void;
-  removeFromCart: (productId: string, size: string, color: string) => void;
-  updateQuantity: (productId: string, size: string, color: string, quantity: number) => void;
+  addToCart: (product: Product, quantity: number) => void;
+  removeFromCart: (productId: string) => void;
+  updateQuantity: (productId: string, quantity: number) => void;
   clearCart: () => void;
   getTotalItems: () => number;
   getTotalPrice: () => number;
@@ -23,49 +21,39 @@ const CartContext = createContext<CartContextType | undefined>(undefined);
 export function CartProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([]);
 
-  const addToCart = (product: Product, size: string, color: string, quantity: number) => {
+  const addToCart = (product: Product, quantity: number) => {
     setItems(prevItems => {
       const existingItem = prevItems.find(
-        item => item.product.id === product.id &&
-        item.selectedSize === size &&
-        item.selectedColor === color
+        item => item.product.id === product.id
       );
 
       if (existingItem) {
         return prevItems.map(item =>
-          item.product.id === product.id &&
-          item.selectedSize === size &&
-          item.selectedColor === color
+          item.product.id === product.id
             ? { ...item, quantity: item.quantity + quantity }
             : item
         );
       }
 
-      return [...prevItems, { product, quantity, selectedSize: size, selectedColor: color }];
+      return [...prevItems, { product, quantity }];
     });
   };
 
-  const removeFromCart = (productId: string, size: string, color: string) => {
+  const removeFromCart = (productId: string) => {
     setItems(prevItems =>
-      prevItems.filter(
-        item => !(item.product.id === productId &&
-        item.selectedSize === size &&
-        item.selectedColor === color)
-      )
+      prevItems.filter(item => item.product.id !== productId)
     );
   };
 
-  const updateQuantity = (productId: string, size: string, color: string, quantity: number) => {
+  const updateQuantity = (productId: string, quantity: number) => {
     if (quantity <= 0) {
-      removeFromCart(productId, size, color);
+      removeFromCart(productId);
       return;
     }
 
     setItems(prevItems =>
       prevItems.map(item =>
-        item.product.id === productId &&
-        item.selectedSize === size &&
-        item.selectedColor === color
+        item.product.id === productId
           ? { ...item, quantity }
           : item
       )

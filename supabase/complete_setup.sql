@@ -1,6 +1,6 @@
 /*
-  COMPREHENSIVE DATABASE & STORAGE SETUP FOR LUXURY PERFUME STORE
-  ==============================================================
+  COMPLETE DATABASE & STORAGE SETUP FOR LUXURY PERFUME STORE
+  ========================================================
   
   This script creates:
   1. Full application database schema (brands, categories, products, customers, orders)
@@ -13,6 +13,10 @@
 
 -- Enable required extensions
 create extension if not exists "uuid-ossp";
+
+-- Create schema
+create schema if not exists ecommerce;
+set search_path = ecommerce, public;
 
 -- ============================================================================ --
 -- APPLICATION DATABASE                                                         --
@@ -145,6 +149,9 @@ VALUES (
 )
 ON CONFLICT (id) DO NOTHING;
 
+-- Enable RLS (this is already true by default, but just in case)
+ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
+
 -- ============================================================================ --
 -- STORAGE POLICIES                                                             --
 -- ============================================================================ --
@@ -168,7 +175,7 @@ CREATE POLICY "Admin upload perfume images"
     bucket_id = 'perfume-images'
     AND auth.role() = 'authenticated'
     -- Replace 'admin@yourdomain.com' with your actual admin email
-    AND (auth.jwt() ->> 'email') = 'admin@davidscollection.com'
+    AND (auth.jwt() ->> 'email') = 'admin@yourdomain.com'
   );
 
 -- Only admins can update (replace) images
@@ -178,7 +185,7 @@ CREATE POLICY "Admin update perfume images"
     bucket_id = 'perfume-images'
     AND auth.role() = 'authenticated'
     -- Replace 'admin@yourdomain.com' with your actual admin email
-    AND (auth.jwt() ->> 'email') = 'admin@davidscollection.com'
+    AND (auth.jwt() ->> 'email') = 'admin@yourdomain.com'
   );
 
 -- Only admins can delete images
@@ -198,8 +205,11 @@ CREATE POLICY "Admin list perfume images"
     bucket_id = 'perfume-images'
     AND auth.role() = 'authenticated'
     -- Replace 'admin@yourdomain.com' with your actual admin email
-    AND (auth.jwt() ->> 'email') = 'admin@davidscollection.com'
+    AND (auth.jwt() ->> 'email') = 'admin@yourdomain.com'
   );
+
+-- Apply policies to storage.objects
+ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
 
 -- ============================================================================ --
 -- SAMPLE DATA                                                                  --

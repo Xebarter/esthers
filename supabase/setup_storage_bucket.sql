@@ -1,11 +1,10 @@
 /*
-  CORRECT & SECURE STORAGE SETUP FOR YOUR LUXURY PERFUME STORE
-  Bucket: perfume-images
-  Public read — Admin-only write
-  Run this once in Supabase SQL Editor (with service_role key recommended)
+  Setup script for perfume-images storage bucket
+  Run this script in Supabase SQL Editor to create the storage bucket
+  and set up the necessary policies for the perfume store.
 */
 
--- 1. Create the public bucket (if not already done)
+-- Create the public bucket for perfume images
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 VALUES (
   'perfume-images',
@@ -16,16 +15,16 @@ VALUES (
 )
 ON CONFLICT (id) DO NOTHING;
 
--- 2. Enable RLS (this is already true by default, but just in case)
-ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
+-- ============================================================================ --
+-- STORAGE POLICIES                                                             --
+-- ============================================================================ --
 
--- 3. Drop any old/conflicting policies on this bucket (safe to run multiple times)
+-- Drop any old/conflicting policies on this bucket (safe to run multiple times)
 DROP POLICY IF EXISTS "Public read perfume images" ON storage.objects;
 DROP POLICY IF EXISTS "Admin upload perfume images" ON storage.objects;
 DROP POLICY IF EXISTS "Admin update perfume images" ON storage.objects;
 DROP POLICY IF EXISTS "Admin delete perfume images" ON storage.objects;
-
--- 4. NEW CLEAN POLICIES
+DROP POLICY IF EXISTS "Admin list perfume images" ON storage.objects;
 
 -- Anyone (even anonymous) can view images
 CREATE POLICY "Public read perfume images"
@@ -38,9 +37,8 @@ CREATE POLICY "Admin upload perfume images"
   WITH CHECK (
     bucket_id = 'perfume-images'
     AND auth.role() = 'authenticated'
-    AND (auth.jwt() -> 'app_metadata' ->> 'role') = 'admin'  -- recommended way
-    -- Alternative if you use user email instead:
-    -- AND (auth.jwt() ->> 'email') = 'you@yourperfumestore.com'
+    -- IMPORTANT: Replace 'admin@yourdomain.com' with your actual admin email
+    AND (auth.jwt() ->> 'email') = 'admin@yourdomain.com'
   );
 
 -- Only admins can update (replace) images
@@ -49,7 +47,8 @@ CREATE POLICY "Admin update perfume images"
   USING (
     bucket_id = 'perfume-images'
     AND auth.role() = 'authenticated'
-    AND (auth.jwt() -> 'app_metadata' ->> 'role') = 'admin'
+    -- IMPORTANT: Replace 'admin@yourdomain.com' with your actual admin email
+    AND (auth.jwt() ->> 'email') = 'admin@yourdomain.com'
   );
 
 -- Only admins can delete images
@@ -58,7 +57,8 @@ CREATE POLICY "Admin delete perfume images"
   USING (
     bucket_id = 'perfume-images'
     AND auth.role() = 'authenticated'
-    AND (auth.jwt() -> 'app_metadata' ->> 'role') = 'admin'
+    -- IMPORTANT: Replace 'admin@yourdomain.com' with your actual admin email
+    AND (auth.jwt() ->> 'email') = 'admin@yourdomain.com'
   );
 
 -- Optional: Allow admins to see the full list in Supabase dashboard
@@ -67,5 +67,9 @@ CREATE POLICY "Admin list perfume images"
   USING (
     bucket_id = 'perfume-images'
     AND auth.role() = 'authenticated'
-    AND (auth.jwt() -> 'app_metadata' ->> 'role') = 'admin'
+    -- IMPORTANT: Replace 'admin@yourdomain.com' with your actual admin email
+    AND (auth.jwt() ->> 'email') = 'admin@yourdomain.com'
   );
+
+-- Make sure RLS is enabled (it should be by default)
+ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;

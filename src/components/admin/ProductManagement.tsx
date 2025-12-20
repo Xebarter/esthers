@@ -1,10 +1,11 @@
 import { useState, useEffect, FormEvent, useRef } from 'react';
-import { supabase, supabaseAdmin, Product, Category, formatCurrency } from '../../lib/supabase';
+import { supabase, supabaseAdmin, Product, Category, Brand, formatCurrency } from '../../lib/supabase';
 import { Plus, Edit, Trash2, X, AlertCircle, Upload } from 'lucide-react';
 
 export function ProductManagement() {
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [brands, setBrands] = useState<Brand[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -15,33 +16,94 @@ export function ProductManagement() {
 
   const [formData, setFormData] = useState({
     name: '',
+    slug: '',
     description: '',
+    short_description: '',
     price: '',
+    compare_at_price: '',
     category_id: '',
+    brand_id: '',
     image_url: '',
-    sizes: '',
-    colors: '',
     stock: '',
     featured: false,
+    is_new: false,
+    is_limited: false,
+    volume_ml: '50',
+    concentration: 'Eau de Parfum',
+    year_launched: '',
+    perfumer: '',
   });
+
+  // Add this constant for comprehensive perfume categories
+  const PERFUME_CATEGORIES = [
+    { id: 'floral', name: 'Floral', description: 'Delicate and romantic bouquets of flowers' },
+    { id: 'woody', name: 'Woody', description: 'Rich, warm woods and resins' },
+    { id: 'oriental', name: 'Oriental', description: 'Exotic spices, vanilla and amber' },
+    { id: 'fresh', name: 'Fresh', description: 'Citrus, aquatic and green fragrances' },
+    { id: 'oud', name: 'Oud', description: 'Precious agarwood compositions' },
+    { id: 'niche', name: 'Niche', description: 'Artisanal and avant-garde creations' },
+    { id: 'citrus', name: 'Citrus', description: 'Zesty and vibrant lemon, lime, orange and bergamot notes' },
+    { id: 'aromatic', name: 'Aromatic', description: 'Herbal and spicy with lavender, rosemary and sage' },
+    { id: 'chypre', name: 'Chypre', description: 'Complex blend of citrus, floral and mossy bases' },
+    { id: 'fougere', name: 'Fougère', description: 'Classic fern-like accord with lavender and coumarin' },
+    { id: 'gourmand', name: 'Gourmand', description: 'Edible notes like vanilla, chocolate and caramel' },
+    { id: 'leather', name: 'Leather', description: 'Rich animalic and smoky leather accords' },
+    { id: 'smoky', name: 'Smoky', description: 'Birch tar, incense and burnt notes' },
+    { id: 'spicy', name: 'Spicy', description: 'Warming cinnamon, cardamom, pepper and clove' },
+    { id: 'aquatic', name: 'Aquatic', description: 'Clean, ozonic and marine inspired scents' },
+    { id: 'green', name: 'Green', description: 'Fresh galbanum, violet leaves and crushed grass' },
+    { id: 'fruity', name: 'Fruity', description: 'Juicy berries, apple, peach and tropical fruits' },
+    { id: 'musky', name: 'Musky', description: 'Soft, sensual and skin-like musk notes' }
+  ];
 
   useEffect(() => {
     loadData();
   }, []);
 
+  // Helper function to get category options
+  function getCategoryOptions() {
+    // If we have categories loaded from DB, use those
+    if (categories && categories.length > 0) {
+      // Filter out any categories that seem to be products (by checking name patterns)
+      const validCategories = categories.filter(category => {
+        // Basic check to exclude products accidentally added as categories
+        // Products typically have descriptions that don't match our predefined categories
+        const predefinedDescriptions = PERFUME_CATEGORIES.map(c => c.description);
+        return category.description && (
+          predefinedDescriptions.includes(category.description) || 
+          category.description.length < 100 // Assume proper categories have shorter descriptions
+        );
+      });
+      
+      if (validCategories.length > 0) {
+        return validCategories.map(category => ({
+          id: category.id,
+          name: category.name,
+          description: category.description || ''
+        }));
+      }
+    }
+    
+    // Fallback to our predefined list
+    return PERFUME_CATEGORIES;
+  }
+
   async function loadData() {
     try {
       setLoading(true);
-      const [productsResult, categoriesResult] = await Promise.all([
+      const [productsResult, categoriesResult, brandsResult] = await Promise.all([
         supabase.from('products').select('*').order('created_at', { ascending: false }),
         supabase.from('categories').select('*').order('name'),
+        supabase.from('brands').select('*').order('name'),
       ]);
 
       if (productsResult.error) throw productsResult.error;
       if (categoriesResult.error) throw categoriesResult.error;
+      if (brandsResult.error) throw brandsResult.error;
 
       if (productsResult.data) setProducts(productsResult.data);
       if (categoriesResult.data) setCategories(categoriesResult.data);
+      if (brandsResult.data) setBrands(brandsResult.data);
       setError(null);
     } catch (error: any) {
       console.error('Error loading data:', error);
@@ -55,14 +117,22 @@ export function ProductManagement() {
     setEditingProduct(null);
     setFormData({
       name: '',
+      slug: '',
       description: '',
+      short_description: '',
       price: '',
+      compare_at_price: '',
       category_id: categories[0]?.id || '',
+      brand_id: brands[0]?.id || '',
       image_url: '',
-      sizes: '',
-      colors: '',
       stock: '',
       featured: false,
+      is_new: false,
+      is_limited: false,
+      volume_ml: '50',
+      concentration: 'Eau de Parfum',
+      year_launched: '',
+      perfumer: '',
     });
     setShowModal(true);
     setError(null);
@@ -73,14 +143,22 @@ export function ProductManagement() {
     setEditingProduct(product);
     setFormData({
       name: product.name,
+      slug: product.slug || '',
       description: product.description,
+      short_description: product.short_description || '',
       price: product.price.toString(),
+      compare_at_price: product.compare_at_price?.toString() || '',
       category_id: product.category_id || categories[0]?.id || '',
+      brand_id: product.brand_id || brands[0]?.id || '',
       image_url: product.image_url,
-      sizes: product.sizes.join(', '),
-      colors: product.colors.join(', '),
       stock: product.stock.toString(),
       featured: product.featured,
+      is_new: product.is_new,
+      is_limited: product.is_limited,
+      volume_ml: product.volume_ml?.toString() || '50',
+      concentration: product.concentration || 'Eau de Parfum',
+      year_launched: product.year_launched?.toString() || '',
+      perfumer: product.perfumer || '',
     });
     setShowModal(true);
     setError(null);
@@ -95,7 +173,7 @@ export function ProductManagement() {
 
       // Use the admin client for uploading images to bypass RLS restrictions
       const { data, error: uploadError } = await supabaseAdmin.storage
-        .from('images')
+        .from('perfume-images')
         .upload(fileName, file, {
           cacheControl: '3600',
           upsert: true
@@ -105,10 +183,10 @@ export function ProductManagement() {
         throw new Error(uploadError.message);
       }
 
-      const { data: { publicUrl } } = supabaseAdmin.storage.from('images').getPublicUrl(fileName);
+      const { data: { publicUrl } } = supabaseAdmin.storage.from('perfume-images').getPublicUrl(fileName);
       return publicUrl;
     } catch (error: any) {
-      throw new Error(`Failed to upload image: ${error.message || 'Please ensure the "images" storage bucket exists and RLS policies allow uploads'}`);
+      throw new Error(`Failed to upload image: ${error.message || 'Please ensure the "perfume-images" storage bucket exists and RLS policies allow uploads'}`);
     } finally {
       setUploading(false);
     }
@@ -175,35 +253,61 @@ export function ProductManagement() {
       return;
     }
 
-    const productData = {
+    if (!formData.volume_ml || parseInt(formData.volume_ml) <= 0) {
+      setError('Valid volume is required');
+      return;
+    }
+
+    const productData: any = {
       name: formData.name.trim(),
+      slug: formData.slug.trim() || formData.name.trim().toLowerCase().replace(/\s+/g, '-'),
       description: formData.description.trim(),
+      short_description: formData.short_description.trim(),
       price: parseFloat(formData.price),
       category_id: formData.category_id,
+      brand_id: formData.brand_id,
       image_url: formData.image_url.trim(),
-      sizes: formData.sizes.split(',').map(s => s.trim()).filter(Boolean),
-      colors: formData.colors.split(',').map(c => c.trim()).filter(Boolean),
       stock: parseInt(formData.stock),
       featured: formData.featured,
+      is_new: formData.is_new,
+      is_limited: formData.is_limited,
+      volume_ml: parseInt(formData.volume_ml),
+      concentration: formData.concentration,
       updated_at: new Date().toISOString(),
     };
+
+    if (formData.compare_at_price) {
+      productData.compare_at_price = parseFloat(formData.compare_at_price);
+    }
+
+    if (formData.year_launched) {
+      productData.year_launched = parseInt(formData.year_launched);
+    }
+
+    if (formData.perfumer) {
+      productData.perfumer = formData.perfumer.trim();
+    }
 
     try {
       setError(null);
       if (editingProduct) {
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from('products')
           .update(productData)
-          .eq('id', editingProduct.id);
+          .eq('id', editingProduct.id)
+          .select();
 
         if (error) throw error;
+        
         setSuccess('Product updated successfully!');
       } else {
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from('products')
-          .insert(productData);
+          .insert(productData)
+          .select();
 
         if (error) throw error;
+        
         setSuccess('Product added successfully!');
       }
 
@@ -302,50 +406,55 @@ export function ProductManagement() {
                         className="h-12 w-12 object-cover rounded"
                         onError={(e) => {
                           const target = e.target as HTMLImageElement;
-                          target.style.display = 'none';
+                          target.parentElement?.classList.add('hidden');
                         }}
                       />
                     ) : (
-                      <div className="h-12 w-12 bg-gray-200 rounded flex items-center justify-center">
-                        <span className="text-gray-500 text-xs">No Image</span>
-                      </div>
+                      <div className="bg-gray-200 border-2 border-dashed rounded-xl w-12 h-12" />
                     )}
                   </td>
                   <td className="px-6 py-4">
                     <div className="text-sm font-medium text-gray-900">{product.name}</div>
-                    <div className="text-sm text-gray-500 line-clamp-2">{product.description}</div>
+                    <div className="text-sm text-gray-500">{product.brand_id || 'No brand'}</div>
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-900">
-                    {category ? category.name : 'Uncategorized'}
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-900">{formatCurrency(product.price)}</td>
-                  <td className="px-6 py-4 text-sm text-gray-900">{product.stock}</td>
-                  <td className="px-6 py-4">
-                    {product.featured ? (
-                      <span className="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
-                        Yes
-                      </span>
+                    {category ? (
+                      <div>
+                        <div>{category.name}</div>
+                        <div className="text-xs text-gray-500">{category.description || 'No description'}</div>
+                      </div>
+                    ) : product.category_id ? (
+                      <span className="text-orange-500">Invalid Category ID: {product.category_id}</span>
                     ) : (
-                      <span className="px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-800">
-                        No
-                      </span>
+                      <span className="text-gray-400">Uncategorized</span>
                     )}
                   </td>
-                  <td className="px-6 py-4">
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => openEditModal(product)}
-                        className="p-2 text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                      >
-                        <Edit className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(product.id)}
-                        className="p-2 text-red-600 hover:bg-red-50 rounded transition-colors"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
+                  <td className="px-6 py-4 text-sm font-medium text-gray-900">
+                    {formatCurrency(product.price)}
+                  </td>
+                  <td className="px-6 py-4 text-sm text-gray-900">
+                    {product.stock}
+                  </td>
+                  <td className="px-6 py-4 text-sm text-gray-900">
+                    {product.featured ? (
+                      <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs">Featured</span>
+                    ) : (
+                      <span className="px-2 py-1 bg-gray-100 text-gray-800 rounded-full text-xs">Regular</span>
+                    )}
+                  </td>
+                  <td className="px-6 py-4 text-sm font-medium flex gap-2">
+                    <button
+                      onClick={() => openEditModal(product)}
+                      className="p-2 text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                    >
+                      <Edit className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(product.id)}
+                      className="p-2 text-red-600 hover:bg-red-50 rounded transition-colors"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
                   </td>
                 </tr>
               );
@@ -404,24 +513,46 @@ export function ProductManagement() {
                 </div>
 
                 <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Slug</label>
+                  <input
+                    type="text"
+                    value={formData.slug}
+                    onChange={(e) => setFormData({ ...formData, slug: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Enter product slug (optional)"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Short Description</label>
+                  <textarea
+                    value={formData.short_description}
+                    onChange={(e) => setFormData({ ...formData, short_description: e.target.value })}
+                    rows={2}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Brief description for product listings"
+                  />
+                </div>
+
+                <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
                   <textarea
                     value={formData.description}
                     onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                     rows={3}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Enter product description"
+                    placeholder="Full product description"
                   />
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Price *</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Price (UGX) *</label>
                     <input
                       type="number"
-                      step="0.01"
-                      min="0"
                       required
+                      min="0"
+                      step="0.01"
                       value={formData.price}
                       onChange={(e) => setFormData({ ...formData, price: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -430,70 +561,171 @@ export function ProductManagement() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Stock *</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Compare At Price</label>
                     <input
                       type="number"
                       min="0"
+                      step="0.01"
+                      value={formData.compare_at_price}
+                      onChange={(e) => setFormData({ ...formData, compare_at_price: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Original price"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Category *</label>
+                    <select
                       required
+                      value={formData.category_id}
+                      onChange={(e) => setFormData({ ...formData, category_id: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      title="Select a perfume category"
+                    >
+                      <option value="" disabled>Select a category</option>
+                      {getCategoryOptions().map((category) => (
+                        <option key={category.id} value={category.id} title={category.description}>
+                          {category.name}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="mt-3 p-3 bg-gray-50 rounded-md">
+                      <p className="text-xs font-medium text-gray-700 mb-2">Available Categories:</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 max-h-40 overflow-y-auto pr-1">
+                        {getCategoryOptions().map((category) => (
+                          <div 
+                            key={category.id} 
+                            className={`flex items-start gap-2 text-xs ${formData.category_id === category.id ? 'text-blue-800 font-medium' : 'text-gray-600'}`}
+                            title={category.description}
+                          >
+                            <span className="text-xs mt-1">•</span>
+                            <div>
+                              <span className="font-medium">{category.name}</span>
+                              <span className="ml-1">- {category.description}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Brand</label>
+                    <select
+                      value={formData.brand_id}
+                      onChange={(e) => setFormData({ ...formData, brand_id: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">Select a brand</option>
+                      {brands.map((brand) => (
+                        <option key={brand.id} value={brand.id}>
+                          {brand.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Volume (ml) *</label>
+                    <select
+                      value={formData.volume_ml}
+                      onChange={(e) => setFormData({ ...formData, volume_ml: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      {[50, 100, 200].map((volume) => (
+                        <option key={volume} value={volume}>
+                          {volume} ml
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Concentration</label>
+                    <select
+                      value={formData.concentration}
+                      onChange={(e) => setFormData({ ...formData, concentration: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="Eau de Parfum">Eau de Parfum</option>
+                      <option value="Eau de Toilette">Eau de Toilette</option>
+                      <option value="Extrait de Parfum">Extrait de Parfum</option>
+                      <option value="Eau de Cologne">Eau de Cologne</option>
+                      <option value="Parfum">Parfum</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Stock *</label>
+                    <input
+                      type="number"
+                      required
+                      min="0"
                       value={formData.stock}
                       onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                       placeholder="0"
                     />
                   </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Year Launched</label>
+                    <input
+                      type="number"
+                      min="1900"
+                      max={new Date().getFullYear()}
+                      value={formData.year_launched}
+                      onChange={(e) => setFormData({ ...formData, year_launched: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Year"
+                    />
+                  </div>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Category *</label>
-                  <select
-                    required
-                    value={formData.category_id}
-                    onChange={(e) => setFormData({ ...formData, category_id: e.target.value })}
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Perfumer</label>
+                  <input
+                    type="text"
+                    value={formData.perfumer}
+                    onChange={(e) => setFormData({ ...formData, perfumer: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">Select a category</option>
-                    {categories.map(category => (
-                      <option key={category.id} value={category.id}>{category.name}</option>
-                    ))}
-                  </select>
+                    placeholder="Perfumer name"
+                  />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Image</label>
-                  <div className="flex items-start gap-4">
-                    <div className="flex-1">
-                      <input
-                        type="url"
-                        value={formData.image_url}
-                        onChange={(e) => setFormData({ ...formData, image_url: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="https://example.com/image.jpg"
-                      />
-                      <p className="mt-1 text-sm text-gray-500">Or upload an image below</p>
-                    </div>
-
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Image URL</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={formData.image_url}
+                      onChange={(e) => setFormData({ ...formData, image_url: e.target.value })}
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="https://example.com/image.jpg"
+                    />
                     <input
                       type="file"
                       ref={fileInputRef}
-                      accept="image/*"
                       onChange={handleImageUpload}
+                      accept="image/*"
                       className="hidden"
                     />
-
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
                       disabled={uploading}
-                      className={`flex items-center gap-2 px-4 py-2 rounded-md ${uploading
-                        ? 'bg-gray-300 cursor-not-allowed'
-                        : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
-                        }`}
+                      className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 disabled:opacity-50 flex items-center gap-1"
                     >
                       <Upload className="h-4 w-4" />
                       {uploading ? 'Uploading...' : 'Upload'}
                     </button>
                   </div>
-
                   {formData.image_url && (
                     <div className="mt-2">
                       <img
@@ -509,43 +741,45 @@ export function ProductManagement() {
                   )}
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Sizes (comma-separated)
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.sizes}
-                    onChange={(e) => setFormData({ ...formData, sizes: e.target.value })}
-                    placeholder="e.g., 6, 7, 8, 9, 10"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="featured"
+                      checked={formData.featured}
+                      onChange={(e) => setFormData({ ...formData, featured: e.target.checked })}
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <label htmlFor="featured" className="text-sm font-medium text-gray-700">
+                      Featured
+                    </label>
+                  </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Colors (comma-separated)
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.colors}
-                    onChange={(e) => setFormData({ ...formData, colors: e.target.value })}
-                    placeholder="e.g., Black, White, Blue"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="is_new"
+                      checked={formData.is_new}
+                      onChange={(e) => setFormData({ ...formData, is_new: e.target.checked })}
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <label htmlFor="is_new" className="text-sm font-medium text-gray-700">
+                      New
+                    </label>
+                  </div>
 
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="featured"
-                    checked={formData.featured}
-                    onChange={(e) => setFormData({ ...formData, featured: e.target.checked })}
-                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                  />
-                  <label htmlFor="featured" className="text-sm font-medium text-gray-700">
-                    Featured Product
-                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="is_limited"
+                      checked={formData.is_limited}
+                      onChange={(e) => setFormData({ ...formData, is_limited: e.target.checked })}
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <label htmlFor="is_limited" className="text-sm font-medium text-gray-700">
+                      Limited Edition
+                    </label>
+                  </div>
                 </div>
 
                 <div className="flex gap-4 pt-4">

@@ -35,7 +35,7 @@ export function ProductGrid() {
   if (loading) {
     return (
       <div className="flex justify-center items-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-amber-600"></div>
       </div>
     );
   }
@@ -43,18 +43,18 @@ export function ProductGrid() {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="mb-8">
-        <h2 className="text-3xl font-bold text-gray-900 mb-4">Our Collection</h2>
+        <h2 className="text-3xl font-bold text-amber-50 mb-4">Our Fragrance Collection</h2>
 
         <div className="flex flex-wrap gap-2">
           <button
             onClick={() => setSelectedCategory('all')}
             className={`px-4 py-2 rounded-full transition-colors ${
               selectedCategory === 'all'
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                ? 'bg-amber-600 text-white'
+                : 'bg-gray-800 text-amber-200 hover:bg-gray-700'
             }`}
           >
-            All
+            All Fragrances
           </button>
           {categories.map(category => (
             <button
@@ -62,8 +62,8 @@ export function ProductGrid() {
               onClick={() => setSelectedCategory(category.id)}
               className={`px-4 py-2 rounded-full transition-colors ${
                 selectedCategory === category.id
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  ? 'bg-amber-600 text-white'
+                  : 'bg-gray-800 text-amber-200 hover:bg-gray-700'
               }`}
             >
               {category.name}
@@ -74,7 +74,7 @@ export function ProductGrid() {
 
       {filteredProducts.length === 0 ? (
         <div className="text-center py-12">
-          <p className="text-gray-500 text-lg">No products found in this category.</p>
+          <p className="text-amber-300 text-lg">No fragrances found in this category.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
